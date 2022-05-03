@@ -32,9 +32,20 @@ def normalize_img3(img):
     # img = ((img / np.max(img)) * 255).astype(np.uint8)
     return img
 
-inp_path = 'data/'
+def getAOIMask(img_shape, poly_pts):
+    assert len(pts.shape) == 3, "poly shape should be 3"
+    mask = np.zeros((img_shape[0:2]), dtype=np.uint8)
+    mask2 = np.zeros((img_shape[0]+2, img_shape[1]+2), dtype=np.uint8)
+    cv.polylines(mask, [poly_pts], False, 255)
+    _, mask, _, _ = cv.floodFill(mask, mask2, (0, 0), 255)
+    mask[mask == 1] = 255
+    print(mask.dtype)
+    return mask
 
-img = cv.imread(os.path.join(inp_path, 'IMG_2485.jpg'), 1)
+
+inp_path = '/home/cstar/workspace/grid-data/G10-Z50-D500-0/'
+
+img = cv.imread(os.path.join(inp_path, 'img_X211.00_Y345.00_Z50.00.jpg'), 1)
 img_hsv = cv.cvtColor(img, cv.COLOR_BGR2HSV)
 kernel = (15, 15)
 img_hsv = cv.GaussianBlur(img_hsv, kernel, cv.BORDER_DEFAULT).astype(np.int32)
@@ -46,7 +57,7 @@ img_hsv = cv.GaussianBlur(img_hsv, kernel, cv.BORDER_DEFAULT).astype(np.int32)
 # ax[1, 1].imshow(img_hsv[:, :, 2])
 # plt.show()
 
-img_2 = cv.imread(os.path.join(inp_path, 'IMG_2489.jpg'), 1)
+img_2 = cv.imread(os.path.join(inp_path, 'img_X43.50_Y345.00_Z50.00.jpg'), 1) #img_X43.50_Y345.00_Z50.00.jpg #img_X177.50_Y144.00_Z50.00
 img_hsv_2 = cv.cvtColor(img_2, cv.COLOR_BGR2HSV)
 img_hsv_2 = cv.GaussianBlur(img_hsv_2, kernel, cv.BORDER_DEFAULT).astype(np.int32)
 
@@ -62,14 +73,35 @@ v_diff = img_hsv_2[:, :, 2] - img_hsv[:, :, 2]
 # plt.show()
 
 
+
+fig, ax = plt.subplots(2, 2)
+ax[0, 0].imshow(img_2)
+ax[0, 1].imshow(img_hsv_2[:, :, 0], cmap='gray')
+ax[1, 0].imshow(img_hsv_2[:, :, 1], cmap='gray')
+ax[1, 1].imshow(img_hsv_2[:, :, 2], cmap='gray')
+plt.show()
+
+pts = np.array([[0, 347], [504, 166], [1075, 261], [1008, 719]])
+cv.polylines(s_diff, [pts], True, 255)
+plt.imshow(s_diff)
+plt.show()
+pts = pts.reshape((-1, 1, 2))
+mask = getAOIMask(img_shape=img.shape, poly_pts=pts)
+plt.imshow(mask)
+plt.title("mask")
+plt.show()
+
+
+
+
 v_diff = normalize_img3(v_diff)
-width = 1000
-height = int(width / v_diff.shape[1] * v_diff.shape[0])
-print(np.amin(v_diff), np.amax(v_diff))
-print(v_diff.shape)
-shape = (width, height)
-v_diff = cv.resize(v_diff, shape, interpolation=cv.INTER_AREA)
-img = cv.resize(img_2, shape, interpolation=cv.INTER_AREA)
+# width = 1000
+# height = int(width / v_diff.shape[1] * v_diff.shape[0])
+# print(np.amin(v_diff), np.amax(v_diff))
+# print(v_diff.shape)
+# shape = (width, height)
+# v_diff = cv.resize(v_diff, shape, interpolation=cv.INTER_AREA)
+# img = cv.resize(img_2, shape, interpolation=cv.INTER_AREA)
 # mask = cv.resize(mask, shape, interpolation=cv.INTER_NEAREST)
 
 # create the histogram
@@ -84,6 +116,7 @@ plt.plot(bin_edges[0:-1], histogram)  # <- or here
 plt.show()
 
 plt.hist(v_diff.reshape(-1), bins=256)
+plt.title("value hist")
 plt.show()
 
 threshold = 60
@@ -93,6 +126,7 @@ print(mask.shape)
 mask = mask.astype("uint8")
 kernel = np.ones((5, 5), np.uint8)
 # mask = cv.erode(mask, kernel, iterations=1)
+plt.title("mask value after threshold")
 plt.imshow(mask, cmap='gray')
 plt.show()
 
@@ -103,10 +137,9 @@ plt.show()
 # ax[1, 1].imshow(v_diff, cmap='gray')
 # plt.show()
 
-plt.imshow(v_diff, cmap='gray')
-plt.show()
 img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
 plt.imshow(img, cmap='gray')
+plt.title("value difference")
 plt.show()
 
 ROI_number = 0
@@ -118,7 +151,7 @@ for c in cnts:
     print(len(c))
     x,y,w,h = cv.boundingRect(c)
     cv.rectangle(img, (x, y), (x + w, y + h), (0,0,255), 2)
-
+plt.title("input img with detections")
 plt.imshow(img)
 plt.show()
 
