@@ -147,7 +147,7 @@ for i2 in range(len(inp_img_spag_paths)):
     bckg2 = im2_mask == 255
     bckg_res = bckg1 + bckg2
     bckg_res = bckg_res.astype(np.uint8)
-    bckg_pts = mask_diff[bckg_res != 255][::10]
+    bckg_pts = mask_diff[bckg_res != 1][::10]
     print("mask s", im2_mask.shape)
     frg_pts = mask_diff[im2_mask == 255]  # cut
 
