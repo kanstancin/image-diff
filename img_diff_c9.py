@@ -66,57 +66,60 @@ def getImDiffMask(im1, im2, maskAOI=None, method="saturation"):
     v_diff = normalize_img3(v_diff)
 
     # to process
-    base_ch = s_diff.copy()
-    plt.title("base_ch before maskAOI")
+    base_ch = s_diff.copy()  # s_diff best
     vmax = 100
-    plt.imshow(base_ch, cmap='gray', vmin=0, vmax=vmax)
-    plt.show()
+    if display:
+        plt.title("base_ch before maskAOI")
+        plt.imshow(base_ch, cmap='gray', vmin=0, vmax=vmax)
+        plt.show()
     # apply ROI mask
     base_ch[maskAOI == 255] = 0
-    plt.title("base_ch after maskAOI")
-    plt.imshow(base_ch, cmap='gray', vmin=0, vmax=vmax)
-    plt.show()
+    if display:
+        plt.title("base_ch after maskAOI")
+        plt.imshow(base_ch, cmap='gray', vmin=0, vmax=vmax)
+        plt.show()
 
-    # plot 2 selected images
-    # plot hsv
-    fig, ax = plt.subplots(1, 2)
-    fig.suptitle('Selected images: im1, im2', fontsize=16)
-    ax[0].imshow(cv.cvtColor(im1, cv.COLOR_BGR2RGB))
-    ax[1].imshow(cv.cvtColor(im2, cv.COLOR_BGR2RGB))
-    plt.show()
+        # plot 2 selected images
+        # plot hsv
+        fig, ax = plt.subplots(1, 2)
+        fig.suptitle('Selected images: im1, im2', fontsize=16)
+        ax[0].imshow(cv.cvtColor(im1, cv.COLOR_BGR2RGB))
+        ax[1].imshow(cv.cvtColor(im2, cv.COLOR_BGR2RGB))
+        plt.show()
 
-    # plot hsv
-    fig, ax = plt.subplots(2, 2)
-    fig.suptitle('Im2, HSV plots', fontsize=16)
-    ax[0, 0].imshow(cv.cvtColor(im2, cv.COLOR_BGR2RGB))
-    ax[0, 1].imshow(im2_hsv[:, :, 0], cmap='gray')
-    ax[1, 0].imshow(im2_hsv[:, :, 1], cmap='gray')
-    ax[1, 1].imshow(im2_hsv[:, :, 2], cmap='gray')
-    plt.show()
+        # plot hsv
+        fig, ax = plt.subplots(2, 2)
+        fig.suptitle('Im2, HSV plots', fontsize=16)
+        ax[0, 0].imshow(cv.cvtColor(im2, cv.COLOR_BGR2RGB))
+        ax[0, 1].imshow(im2_hsv[:, :, 0], cmap='gray')
+        ax[1, 0].imshow(im2_hsv[:, :, 1], cmap='gray')
+        ax[1, 1].imshow(im2_hsv[:, :, 2], cmap='gray')
+        plt.show()
 
-    # plot hsv diff
-    fig, ax = plt.subplots(2, 2)
-    fig.suptitle('Im2, HSV diff plots', fontsize=16)
-    ax[0, 0].imshow(cv.cvtColor(im2, cv.COLOR_BGR2RGB))
-    ax[0, 1].imshow(h_diff, cmap='gray')
-    ax[1, 0].imshow(s_diff, cmap='gray')
-    ax[1, 1].imshow(v_diff, cmap='gray')
-    plt.show()
+        # plot hsv diff
+        fig, ax = plt.subplots(2, 2)
+        fig.suptitle('Im2, HSV diff plots', fontsize=16)
+        ax[0, 0].imshow(cv.cvtColor(im2, cv.COLOR_BGR2RGB))
+        ax[0, 1].imshow(h_diff, cmap='gray')
+        ax[1, 0].imshow(s_diff, cmap='gray')
+        ax[1, 1].imshow(v_diff, cmap='gray')
+        plt.show()
 
     # create the histogram, plot #1
     histogram, bin_edges = np.histogram(base_ch, bins=256, range=(0, 255))
-    plt.figure()
-    plt.title("Image Difference Histogram, #1")
-    plt.xlabel("Intensity")
-    plt.ylabel("Count")
-    plt.ylim([0, 5000])  # <- named arguments do not work here
-    plt.plot(bin_edges[0:-1], histogram)  # <- or here
-    plt.show()
-    # create the histogram, plot #2
-    plt.ylim([0, 5000])
-    plt.hist(base_ch.reshape(-1), bins=256, range=(0, 255))
-    plt.title("hist #2")
-    plt.show()
+    if display:
+        plt.figure()
+        plt.title("Image Difference Histogram, #1")
+        plt.xlabel("Intensity")
+        plt.ylabel("Count")
+        plt.ylim([0, 5000])  # <- named arguments do not work here
+        plt.plot(bin_edges[0:-1], histogram)  # <- or here
+        plt.show()
+        # create the histogram, plot #2
+        plt.ylim([0, 5000])
+        plt.hist(base_ch.reshape(-1), bins=256, range=(0, 255))
+        plt.title("hist #2")
+        plt.show()
 
     # threshold diff
     threshold = 10
@@ -126,9 +129,10 @@ def getImDiffMask(im1, im2, maskAOI=None, method="saturation"):
     mask_diff = mask_diff.astype("uint8")
     kernel = np.ones((5, 5), np.uint8)
     # mask_diff = cv.erode(mask_diff, kernel, iterations=1)
-    plt.title("mask value after threshold")
-    plt.imshow(mask_diff, cmap='gray')
-    plt.show()
+    if display:
+        plt.title("mask value after threshold")
+        plt.imshow(mask_diff, cmap='gray')
+        plt.show()
 
     return mask_diff
 
@@ -153,6 +157,7 @@ inp_path_spag = '/home/cstar/workspace/grid-data/dataset-im-diff-no-shadows-Z30/
 inp_img_spag_paths = get_img_paths(inp_path_spag)
 inp_path_nospag = '/home/cstar/workspace/grid-data/im-test-no-shadow/'
 inp_img_nospag_paths = get_img_paths(inp_path_nospag)
+display = False
 i1, i2 = (0, 20)
 im1_path = os.path.join(inp_path_nospag, inp_img_nospag_paths[i1])
 im2_path = os.path.join(inp_path_spag, inp_img_spag_paths[i2])
@@ -169,9 +174,10 @@ im2 = cv.imread(os.path.join(inp_path_spag, im2_path),
 pts = np.array([[0, 347], [504, 166], [1075, 261], [1008, 719], [683, 719], [0, 356]])
 pts = pts.reshape((-1, 1, 2))
 maskAOI = getAOIMask(img_shape=im1.shape, poly_pts=pts)
-plt.imshow(maskAOI)
-plt.title("maskAOI")
-plt.show()
+if display:
+    plt.imshow(maskAOI)
+    plt.title("maskAOI")
+    plt.show()
 
 # resize
 # width = 1000
@@ -202,6 +208,8 @@ for c in cnts:
     print(len(c))
     x, y, w, h = cv.boundingRect(c)
     cv.rectangle(im2, (x, y), (x + w, y + h), (0, 0, 255), 2)
-plt.title("input im2 with detections")
-plt.imshow(cv.cvtColor(im2, cv.COLOR_BGR2RGB))
-plt.show()
+
+if display:
+    plt.title("input im2 with detections")
+    plt.imshow(cv.cvtColor(im2, cv.COLOR_BGR2RGB))
+    plt.show()
