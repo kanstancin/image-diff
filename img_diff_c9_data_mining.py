@@ -53,8 +53,8 @@ def prepropImg(img, kernel=(15, 15)):
 
 
 def getImDiffMask(im1, im2, maskAOI=None, method="saturation"):
-    im1_hsv = prepropImg(im1, kernel=(7, 7))
-    im2_hsv = prepropImg(im2, kernel=(7, 7))
+    im1_hsv = prepropImg(im1, kernel=(3, 3))
+    im2_hsv = prepropImg(im2, kernel=(3, 3))
 
     h_diff = im2_hsv[:, :, 0] - im1_hsv[:, :, 0]
     h_diff = normalize_img3(h_diff)
@@ -67,9 +67,25 @@ def getImDiffMask(im1, im2, maskAOI=None, method="saturation"):
 
     # to process
     mask_diff = im1_hsv - im2_hsv  # s_diff.copy()  # s_diff best
+    print("base", mask_diff.dtype)
     vmax = 100
     # apply ROI mask
     mask_diff[maskAOI == 255] = [0, 0, 0]
+
+    im = mask_diff[:, :, 1]
+    im = np.abs(im)
+    # fig, ax = plt.subplots(2, 2)
+    # fig.suptitle('Im2, HSV diff plots', fontsize=16)
+    # ax[0, 0].imshow(cv.cvtColor(im2, cv.COLOR_BGR2RGB))
+    # ax[0, 1].imshow(np.abs(mask_diff[:,:,0]), cmap='gray', vmin=0, vmax=30)
+    # ax[1, 0].imshow(np.abs(mask_diff[:,:,1]), cmap='gray', vmin=0, vmax=30)
+    # ax[1, 1].imshow(np.abs(mask_diff[:,:,2]), cmap='gray', vmin=0, vmax=30)
+    # plt.show()
+
+    # print("here", np.amin(im), np.mean(im))
+    # plt.title("here")
+    # plt.imshow(im.astype(np.uint8), cmap='gray')
+    # plt.show()
 
     # create the histogram, plot #1
     # histogram, bin_edges = np.histogram(base_ch, bins=256, range=(0, 255))
@@ -103,15 +119,39 @@ def get_img_paths(im_in_dir, verbose=True):
     return all_inps
 
 
-inp_path_spag = '/home/cstar/workspace/grid-data/dataset-im-diff-no-shadows-Z30/images/train/'
+def classify_circle(img, rad=10, cx=0,  cy=0, cz=0):
+    img = img.astype(np.float16)
+    ch1 = img[:, :, 0] - cx
+    ch1 = ch1 ** 2
+    ch2 = img[:, :, 1] - cy
+    ch2 = ch2 ** 2
+    ch3 = img[:, :, 1] - cz
+    ch3 = ch3 ** 2
+    val_ch = ch1 + ch2 + ch3
+    res = np.zeros(img.shape[:2]).astype(np.uint8)
+    res[val_ch > rad**2] = 255
+    return res
+
+
+inp_path_spag = '/home/cstar/workspace/grid-data/dataset-im-diff-no-shadows-spag-Z30-avg-3/images/train/'
 inp_img_spag_paths = get_img_paths(inp_path_spag)
-inp_path_mask = '/home/cstar/workspace/grid-data/dataset-im-diff-no-shadows-Z30/masks/train/'
-inp_path_nospag = '/home/cstar/workspace/grid-data/im-test-no-shadow/'
+inp_path_mask = '/home/cstar/workspace/grid-data/dataset-im-diff-no-shadows-spag-Z30-avg-3/masks/train/'
+inp_path_nospag = '/home/cstar/workspace/grid-data/dataset-im-diff-no-shadows-no-spag-Z30-avg-3/'
 inp_img_nospag_paths = get_img_paths(inp_path_nospag)
 display = False
 bckg_pts_all = np.empty((0, 3))
 frg_pts_all = np.empty((0, 3))
 
+img_noshadows_avg = np.zeros((720, 1280, 3)).astype(np.uint64)
+for i1 in range(len(inp_img_nospag_paths)):
+    im1_path = os.path.join(inp_path_nospag, inp_img_nospag_paths[i1])
+    im1 = cv.imread(im1_path, 1)
+    img_noshadows_avg += im1
+    print(i1)
+
+img_noshadows_avg = img_noshadows_avg / len(inp_img_nospag_paths)
+img_noshadows_avg = img_noshadows_avg.astype(np.uint8)
+cv.imwrite('/home/cstar/workspace/grid-data/img_avg.png', img_noshadows_avg)
 # i1, i2 = (0, 20)
 i1 = 0
 for i2 in range(len(inp_img_spag_paths)):
@@ -126,10 +166,9 @@ for i2 in range(len(inp_img_spag_paths)):
     print(f"input imgs: \n\t {inp_img_nospag_paths[i1]} \n\t {inp_img_spag_paths[i2]}")
 
     im1 = cv.imread(im1_path, 1)
+    im1 = img_noshadows_avg.copy()
     im2 = cv.imread(im2_path, 1)  # img_X43.50_Y345.00_Z50.00.jpg #img_X177.50_Y144.00_Z50.00
     im2_mask = cv.imread(im2_path_mask, 1)[:, :, 0]
-    print(im2_path_mask)
-    print("mask shape: ", im2_mask.shape)
 
     # TODO: func img, img, maskAOI -> mask of diff [x]
 
@@ -147,15 +186,35 @@ for i2 in range(len(inp_img_spag_paths)):
     bckg2 = im2_mask == 255
     bckg_res = bckg1 + bckg2
     bckg_res = bckg_res.astype(np.uint8)
+    # plt.imshow(bckg_res, cmap='gray')
+    # plt.show()
     bckg_pts = mask_diff[bckg_res != 1][::10]
-    print("mask s", im2_mask.shape)
     frg_pts = mask_diff[im2_mask == 255]  # cut
-
     bckg_pts_all = np.append(bckg_pts_all, bckg_pts, axis=0)
     frg_pts_all = np.append(frg_pts_all, frg_pts, axis=0)
 
-np.save("/home/cstar/workspace/grid-data/bckg_pts_all.npy", bckg_pts_all)
-np.save("/home/cstar/workspace/grid-data/frg_pts_all.npy", frg_pts_all)
+    cl_res = classify_circle(mask_diff[:, :, :], rad=10, cx=0,  cy=0, cz=0)
+
+    ROI_number = 0
+    cnts = cv.findContours(cl_res, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+    cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+    for c in cnts:
+        if len(c) < 100:
+            continue
+        print(len(c))
+        x, y, w, h = cv.boundingRect(c)
+        cv.rectangle(im2, (x, y), (x + w, y + h), (0, 0, 255), 2)
+
+    plt.title("classification")
+    plt.imshow(cl_res, cmap='gray')
+    plt.show()
+    plt.title("input im2 with detections")
+    plt.imshow(cv.cvtColor(im2, cv.COLOR_BGR2RGB))
+    plt.show()
+
+
+# np.save("/home/cstar/workspace/grid-data/bckg_pts_all.npy", bckg_pts_all)
+# np.save("/home/cstar/workspace/grid-data/frg_pts_all.npy", frg_pts_all)
 
 
 from scipy.io import savemat

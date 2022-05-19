@@ -67,6 +67,7 @@ def getImDiffMask(im1, im2, maskAOI=None, method="saturation"):
 
     # to process
     base_ch = s_diff.copy()  # s_diff best
+
     vmax = 100
     if display:
         plt.title("base_ch before maskAOI")
@@ -157,8 +158,8 @@ inp_path_spag = '/home/cstar/workspace/grid-data/dataset-im-diff-no-shadows-Z30/
 inp_img_spag_paths = get_img_paths(inp_path_spag)
 inp_path_nospag = '/home/cstar/workspace/grid-data/im-test-no-shadow/'
 inp_img_nospag_paths = get_img_paths(inp_path_nospag)
-display = False
-i1, i2 = (0, 20)
+display = True
+i1, i2 = (0, 8)
 im1_path = os.path.join(inp_path_nospag, inp_img_nospag_paths[i1])
 im2_path = os.path.join(inp_path_spag, inp_img_spag_paths[i2])
 print(f"input imgs: \n\t {inp_img_nospag_paths[i1]} \n\t {inp_img_spag_paths[i2]}")
