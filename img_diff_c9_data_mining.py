@@ -4,7 +4,7 @@ import numpy as np
 import os
 from scipy import stats
 from scipy.io import savemat
-
+import gauss_mixture
 
 def normalize_img(img):
     assert (len(img.shape) == 2)
@@ -94,6 +94,17 @@ def classify_circle(img, rad=10, cx=0,  cy=0, cz=0):
     return res
 
 
+def classify_ellipse(img, c, r):
+    img = img.astype(np.float16)
+    ch1 = ((img[:, :, 0] - c[0]) ** 2) / r[0] ** 2
+    ch2 = ((img[:, :, 1] - c[1]) ** 2) / r[1] ** 2
+    ch3 = ((img[:, :, 2] - c[2]) ** 2) / r[2] ** 2
+    val_ch = ch1 + ch2 + ch3
+    res = np.zeros(img.shape[:2]).astype(np.uint8)
+    res[val_ch > 1] = 255
+    return res
+
+
 def avg_img_from_path(inp_img_nospag_paths):
     img_noshadows_avg = np.zeros((720, 1280, 3)).astype(np.uint64)
     for i1 in range(len(inp_img_nospag_paths)):
@@ -127,6 +138,16 @@ def plt_show_img(im, title="", cmap=None, to_rgb=False):
     plt.imshow(im, cmap=cmap)
     plt.show()
 
+
+arr_name = f"G10-Z50-D500-0"
+bckg_pts_all = np.load(f"/home/cstar/workspace/grid-data/diff-data-arr/bckg_pts_dataset-{arr_name}.npy")[::50]
+frg_pts_all = np.load(f"/home/cstar/workspace/grid-data/diff-data-arr/frg_pts_dataset-{arr_name}.npy")[::10]
+# filter zeros
+frg_pts_all = frg_pts_all[np.any(frg_pts_all, axis=1)]
+
+print(f"len bckg {len(bckg_pts_all)} \nlen frg: {len(frg_pts_all)}")
+c, r = gauss_mixture.get_ellipse(bckg_pts_all, frg_pts_all)
+
 data_dir = 'dataset-G10-Z50-D500-0'
 data_spag_path = f'/home/cstar/workspace/grid-data/preproc_data/{data_dir}/dataset-im-diff-spag-avg-3/'
 
@@ -136,7 +157,7 @@ inp_path_mask = os.path.join(data_spag_path, 'masks/train/')
 
 inp_path_nospag = f'/home/cstar/workspace/grid-data/preproc_data/{data_dir}/no-shadow/'  # should be not avg-3
 inp_img_nospag_paths = get_img_paths(inp_path_nospag)
-display = False
+display = True
 bckg_pts_all = np.empty((0, 3))
 frg_pts_all = np.empty((0, 3))
 
@@ -164,7 +185,7 @@ for i2 in range(len(inp_img_spag_paths)):
     pts_Z10 = np.array([[1093, 647], [1096, 177], [523, 90], [0, 230], [0, 240]])
     pts_Z30 = np.array([[0, 347], [569, 128], [1080, 220], [1008, 719], [683, 719], [0, 356]])
     pts_Z50 = np.array([[0, 347], [569, 128], [1080, 220], [1008, 719], [553, 719], [0, 356]])
-    pts = pts_Z50
+    pts = pts_Z10
     pts = pts.reshape((-1, 1, 2))
     maskAOI = getAOIMask(img_shape=im1.shape, poly_pts=pts)
 
@@ -181,7 +202,8 @@ for i2 in range(len(inp_img_spag_paths)):
     bckg_pts_all = np.append(bckg_pts_all, bckg_pts, axis=0)
     frg_pts_all = np.append(frg_pts_all, frg_pts, axis=0)
 
-    cl_res = classify_circle(im_diff[:, :, :], rad=10, cx=0,  cy=0, cz=0)
+    # cl_res = classify_circle(im_diff[:, :, :], rad=10, cx=0,  cy=0, cz=0)
+    cl_res = classify_ellipse(im_diff[:, :, :], c, r)
 
     im2 = draw_rect(im2, cl_res)
     im2 = cv.polylines(im2, [pts], True, (255,0,0))
@@ -193,13 +215,13 @@ for i2 in range(len(inp_img_spag_paths)):
 
 
 
-bckg_pts_all_dict = {"data": bckg_pts_all, "label": "experiment"}
-savemat("/home/cstar/workspace/grid-data/bckg_pts_all.mat", bckg_pts_all_dict)
-np.save("/home/cstar/workspace/grid-data/bckg_pts_all.npy", bckg_pts_all)
-
-frg_pts_all_dict = {"data": frg_pts_all, "label": "experiment"}
-savemat("/home/cstar/workspace/grid-data/frg_pts_all.mat", frg_pts_all_dict)
-np.save("/home/cstar/workspace/grid-data/frg_pts_all.npy", frg_pts_all)
+# bckg_pts_all_dict = {"data": bckg_pts_all, "label": "experiment"}
+# savemat(f"/home/cstar/workspace/grid-data/diff-data-arr/bckg_pts_{data_dir}.mat", bckg_pts_all_dict)
+# np.save(f"/home/cstar/workspace/grid-data/diff-data-arr/bckg_pts_{data_dir}.npy", bckg_pts_all)
+#
+# frg_pts_all_dict = {"data": frg_pts_all, "label": "experiment"}
+# savemat(f"/home/cstar/workspace/grid-data/diff-data-arr/frg_pts_{data_dir}.mat", frg_pts_all_dict)
+# np.save(f"/home/cstar/workspace/grid-data/diff-data-arr/frg_pts_{data_dir}.npy", frg_pts_all)
 
 # plots ######################################################################
 # print(res_imgs.shape)

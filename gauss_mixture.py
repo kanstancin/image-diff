@@ -6,7 +6,8 @@ import os
 import numpy as np
 from sklearn.mixture import GaussianMixture, BayesianGaussianMixture
 
-def visualize_3d_gmm(points, w, mu, stdev, export=True):
+
+def visualize_3d_gmm(points, points2, w, mu, stdev, export=True):
     '''
     plots points and their corresponding gmm model in 3D
     Input:
@@ -23,16 +24,21 @@ def visualize_3d_gmm(points, w, mu, stdev, export=True):
     # Visualize data
     fig = plt.figure(figsize=(8, 8))
     axes = fig.add_subplot(111, projection='3d')
-    n = 10
+    n = 40
     axes.set_xlim(np.array([-1, 1])*n)
     axes.set_ylim(np.array([-1, 1])*n)
     axes.set_zlim(np.array([-1, 1])*n)
     plt.set_cmap('Set1')
-    colors = cmx.Set1(np.linspace(0, 1, n_gaussians))
-    for i in range(n_gaussians):
+    colors = cmx.Set1([0, 1])
+    for i in range(1):
         idx = range(i * N, (i + 1) * N)
-        axes.scatter(points[idx, 0], points[idx, 1], points[idx, 2], alpha=0.3, c=colors[i])
+        axes.scatter(points[idx, 0], points[idx, 1], points[idx, 2], alpha=0.3, c=colors[1])
         plot_sphere(w=w[i], c=mu[:, i], r=stdev[:, i], ax=axes)
+
+    N = int(np.round(points2.shape[0] / n_gaussians))
+    for i in range(1):
+        idx = range(i * N, (i + 1) * N)
+        axes.scatter(points2[idx, 0], points2[idx, 1], points2[idx, 2], alpha=0.3, c=colors[0])
 
     plt.title('3D GMM')
     axes.set_xlabel('X')
@@ -45,7 +51,7 @@ def visualize_3d_gmm(points, w, mu, stdev, export=True):
     plt.show()
 
 
-def plot_sphere(w=0, c=[0,0,0], r=[1, 1, 1], subdev=10, ax=None, sigma_multiplier=3):
+def plot_sphere(w=0, c=[0,0,0], r=[1, 1, 1], subdev=10, ax=None, sigma_multiplier=1):
     '''
         plot a sphere surface
         Input:
@@ -112,132 +118,89 @@ def visualize_2D_gmm(points, w, mu, stdev, export=True):
 
     plt.show()
 
-def efit(x, y, z):
-    x = np.asarray(x, float)
-    y = np.asarray(y, float)
-    z = np.asarray(z, float)
-    D = [
-        x * x + y * y - 2 * z * z, x * x + z * z - 2 * y * y, 2 * x * y,
-        2 * x * z, 2 * y * z, 2 * x, 2 * y, 2 * z, 1 + 0 * x
-    ]
-    D = np.array(D)
 
-    d2 = x * x + y * y + z * z
-    d2 = d2.reshape((d2.shape[0], 1))
-    Q = np.dot(D, D.T)
-    b = np.dot(D, d2)
-    u = np.linalg.solve(Q, b)
-
-    v = np.zeros((u.shape[0] + 1, u.shape[1]))
-    v[0] = u[0] + u[1] - 1
-    v[1] = u[0] - 2 * u[1] - 1
-    v[2] = u[1] - 2 * u[0] - 1
-    v[3:10] = u[2:9]
-
-    A = np.array([
-        v[0], v[3], v[4], v[6], v[3], v[1], v[5], v[7], v[4], v[5], v[2], v[8],
-        v[6], v[7], v[8], v[9]
-    ]).reshape((4, 4))
-
-    center = np.linalg.solve(-A[:3, :3], v[6:9])
-    T = np.eye(4)
-    T[3, :3] = center.T
-    center = center.reshape((3, ))
-    R = T.dot(A).dot(T.conj().T)
-    evals, evecs = np.linalg.eig(R[:3, :3] / -R[3, 3])
-
-    idx = np.argsort(evals)
-    evals = evals[idx]
-    evecs = evecs[:, idx]
-    sgns = np.sign(evals)
-    radii = np.sqrt(sgns / evals)
-
-    d = np.array([x - center[0], y - center[1], z - center[2]])
-    d = np.dot(d.T, evecs)
-    d = np.array([d[:, 0] / radii[0], d[:, 1] / radii[1],
-                  d[:, 2] / radii[2]]).T
-    chi2 = np.sum(
-        np.abs(1 - np.sum(d**2 * np.tile(sgns, (d.shape[0], 1)), axis=1)))
-
-    return center, radii, evecs, v, chi2
+def remove_noise_gauss(pts, std_iters=2, std_range=2, axis=0):
+    for i in range(std_iters):
+        mean, std = np.mean(pts[:, axis]), np.std(pts[:, axis])
+        pts = pts[np.abs((pts[:, axis] - mean)) < std_range * std]
+    return pts
 
 
+def get_elps_pts(pts, c, r):
+    arr = ((pts[:, 0] - c[0])**2 / (r[0]**2) + (pts[:, 1] - c[1])**2 / (r[1]**2) + (pts[:, 2] - c[2])**2 / (r[2]**2)) \
+          < 1
+    return pts[arr]
 
-bckg_pts_all = np.load("/home/cstar/workspace/grid-data/bckg_pts_all.npy")[::1000]
-frg_pts_all = np.load("/home/cstar/workspace/grid-data/frg_pts_all.npy")
-print("bckg_pts shape: ", bckg_pts_all.shape, bckg_pts_all.dtype)
 
-bckg_pts_all = bckg_pts_all[np.abs(bckg_pts_all[:,0]) < 10]
-bckg_pts_all = bckg_pts_all[np.abs(bckg_pts_all[:,1]) < 50]
-bckg_pts_all = bckg_pts_all[np.abs(bckg_pts_all[:,2]) < 50]
+def get_ellipse(bckg_pts_all, frg_pts_all):
+    bckg_pts_all_prev = bckg_pts_all.copy()
+    bckg_pts_all = remove_noise_gauss(bckg_pts_all, std_iters=1, std_range=7, axis=0)
+    bckg_pts_all = remove_noise_gauss(bckg_pts_all, std_iters=1, std_range=7, axis=1)
+    bckg_pts_all = remove_noise_gauss(bckg_pts_all, std_iters=1, std_range=7, axis=2)
 
-histogram, bin_edges = np.histogram(bckg_pts_all[:,2], bins=512, range=(-100, 100))
+    histogram, bin_edges = np.histogram(bckg_pts_all[:, 0], bins=512, range=(-100, 100))
+    plt.figure()
+    plt.title("Image Difference Histogram, #1")
+    plt.xlabel("Intensity")
+    plt.ylabel("Count")
+    plt.ylim([0, 100])  # <- named arguments do not work here
+    plt.plot(bin_edges[0:-1], histogram)  # <- or here
+    plt.show()
 
-plt.figure()
-plt.title("Image Difference Histogram, #1")
-plt.xlabel("Intensity")
-plt.ylabel("Count")
-plt.ylim([0, 100])  # <- named arguments do not work here
-plt.plot(bin_edges[0:-1], histogram)  # <- or here
-plt.show()
-# create the histogram, plot #2
+    # create the histogram, plot #2
 
-x_mean, x_std = np.mean(bckg_pts_all[:, 0]), np.std(bckg_pts_all[:, 0])
-y_mean, y_std = np.mean(bckg_pts_all[:, 1]), np.std(bckg_pts_all[:, 1])
-z_mean, z_std = np.mean(bckg_pts_all[:, 2]), np.std(bckg_pts_all[:, 2])
+    # x_mean, x_std = np.mean(bckg_pts_all[:, 0]), np.std(bckg_pts_all[:, 0])
+    # y_mean, y_std = np.mean(bckg_pts_all[:, 1]), np.std(bckg_pts_all[:, 1])
+    # z_mean, z_std = np.mean(bckg_pts_all[:, 2]), np.std(bckg_pts_all[:, 2])
 
-# bckg_pts_all[:, 0] = (bckg_pts_all[:, 0] - x_mean) / x_std
-# bckg_pts_all[:, 1] = (bckg_pts_all[:, 1] - y_mean) / y_std
-# bckg_pts_all[:, 2] = (bckg_pts_all[:, 2] - z_mean) / z_std
+    # bckg_pts_all[:, 0] = (bckg_pts_all[:, 0] - x_mean) / x_std
+    # bckg_pts_all[:, 1] = (bckg_pts_all[:, 1] - y_mean) / y_std
+    # bckg_pts_all[:, 2] = (bckg_pts_all[:, 2] - z_mean) / z_std
 
-print(x_mean, x_std)
-print(y_mean, y_std)
-print(z_mean, z_std)
-## Generate synthetic data
-N, D = 1000, 3  # number of points and dimenstinality
+    n_gaussians = 1  # means.shape[0]
+    #
+    points = bckg_pts_all.copy()
+
+    # fit the gaussian model
+    gmm = BayesianGaussianMixture(n_components=n_gaussians, covariance_type='diag', weight_concentration_prior=1,
+                                  weight_concentration_prior_type='dirichlet_process')  # 'diag'
+    gmm.fit(points)
+
+    c = gmm.means_.reshape(3)
+    r = np.sqrt(gmm.covariances_).reshape(3) * 8
+    elp_pts = get_elps_pts(points, c, r)
+
+    print(f"final ellipse: \t{c}\n\t{r}")
+    print(
+        f"number of points reduced by {(len(bckg_pts_all_prev) - len(bckg_pts_all)) / len(bckg_pts_all_prev) * 100 :.2f}%")
+
+    frg_pts_elp = get_elps_pts(frg_pts_all, c, r)
+    print(f"{(len(frg_pts_elp)) / len(frg_pts_all) * 100 :.2f}% of frg points are in ellipse")
+    # visualize
+    visualize_3d_gmm(bckg_pts_all_prev, frg_pts_all, gmm.weights_, gmm.means_.T, np.sqrt(gmm.covariances_).T * 8)
+
+    return c, r
+
+# arr_name = f"G10-Z10-D500-0"
+# bckg_pts_all = np.load(f"/home/cstar/workspace/grid-data/diff-data-arr/bckg_pts_dataset-{arr_name}.npy")[::50]
+# frg_pts_all = np.load(f"/home/cstar/workspace/grid-data/diff-data-arr/frg_pts_dataset-{arr_name}.npy")[::10]
+# # filter zeros
+# frg_pts_all = frg_pts_all[np.any(frg_pts_all, axis=1)]
 #
-# if D == 2:
-#     #set gaussian ceters and covariances in 2D
-#     means = np.array([[0.5, 0.0],
-#                       [0, 0],
-#                       [-0.5, -0.5],
-#                       [-0.8, 0.3]])
-#     covs = np.array([np.diag([0.01, 0.01]),
-#                      np.diag([0.025, 0.01]),
-#                      np.diag([0.01, 0.025]),
-#                      np.diag([0.01, 0.01])])
-# elif D == 3:
-#     # set gaussian ceters and covariances in 3D
-#     means = np.array([[0.5, 0.0, 0.0],
-#                       [0.0, 0.0, 0.0],
-#                       [-0.5, -0.5, -0.5],
-#                       [-0.8, 0.3, 0.4]])
-#     covs = np.array([np.diag([0.01, 0.01, 0.03]),
-#                      np.diag([0.08, 0.01, 0.01]),
-#                      np.diag([0.01, 0.05, 0.01]),
-#                      np.diag([0.03, 0.07, 0.01])])
+# print("bckg_pts shape: ", bckg_pts_all.shape)
+# print("frg_pts shape: ", frg_pts_all.shape)
 #
-n_gaussians = 1  # means.shape[0]
+# # bckg_pts_all = bckg_pts_all[np.abs(bckg_pts_all[:,0]) < 10]
+# # bckg_pts_all = bckg_pts_all[np.abs(bckg_pts_all[:,1]) < 50]
+# # bckg_pts_all = bckg_pts_all[np.abs(bckg_pts_all[:,2]) < 50]
 #
-# points = []
-# for i in range(len(means)):
-#     x = np.random.multivariate_normal(means[i], covs[i], N)
-#     points.append(x)
-# points = np.concatenate(points)
-points = bckg_pts_all.copy()
-print(points.shape)
-
-#fit the gaussian model
-gmm = BayesianGaussianMixture(n_components=n_gaussians, covariance_type='diag', weight_concentration_prior=1,
-                              weight_concentration_prior_type='dirichlet_process')  # 'diag'
-gmm.fit(points)
-
-print(gmm.covariances_)
-print(gmm.weights_, gmm.means_.T, np.sqrt(gmm.covariances_).T)
-#visualize
-if D == 2:
-    visualize_2D_gmm(points, gmm.weights_, gmm.means_.T, np.sqrt(gmm.covariances_).T)
-elif D == 3:
-    visualize_3d_gmm(points, gmm.weights_, gmm.means_.T, np.sqrt(gmm.covariances_).T)
-
-
+# histogram, bin_edges = np.histogram(bckg_pts_all[:, 0], bins=512, range=(-100, 100))
+# plt.figure()
+# plt.title("Image Difference Histogram, #1")
+# plt.xlabel("Intensity")
+# plt.ylabel("Count")
+# plt.ylim([0, 100])  # <- named arguments do not work here
+# plt.plot(bin_edges[0:-1], histogram)  # <- or here
+# plt.show()
+#
+# c, r = get_ellipse(bckg_pts_all, frg_pts_all)
