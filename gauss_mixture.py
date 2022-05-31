@@ -122,8 +122,38 @@ def visualize_2D_gmm(points, w, mu, stdev, export=True):
 def remove_noise_gauss(pts, std_iters=2, std_range=2, axis=0):
     for i in range(std_iters):
         mean, std = np.mean(pts[:, axis]), np.std(pts[:, axis])
+        print("thresh: ", std * std_range)
         pts = pts[np.abs((pts[:, axis] - mean)) < std_range * std]
     return pts
+
+
+from sklearn.neighbors import KernelDensity
+from sklearn.neighbors import NearestNeighbors
+def dst_classification(bckg_pts_all):
+    # dist = DistanceMetric.get_metric('euclidean')
+    # kde = KernelDensity(kernel='gaussian', bandwidth=5).fit(bckg_pts_all)
+    # kde = kde.score_samples(bckg_pts_all)
+    neigh = NearestNeighbors(n_neighbors=5)
+    nei = neigh.fit(bckg_pts_all)
+    kde = neigh.kneighbors(bckg_pts_all)
+    print(kde)
+    means = np.amax(kde[0], axis=1)
+    print("std", np.std(means-np.mean(means)))
+    histogram, bin_edges = np.histogram(means)#
+    plt.figure()
+    plt.title("density hist")
+    plt.xlabel("Intensity")
+    plt.ylabel("Count")
+    # plt.ylim([0, 100])  # <- named arguments do not work here
+    plt.plot(bin_edges[0:-1], histogram)  # <- or here
+    plt.show()
+    return means
+
+
+def remove_noise_dens(pts, thresh):
+    density = dst_classification(pts)
+    return pts[density < thresh], pts[density >= thresh]
+    # cl_dens = neigh_classifier(density, im_diff, thresh=4500)
 
 
 def get_elps_pts(pts, c, r):
@@ -134,9 +164,10 @@ def get_elps_pts(pts, c, r):
 
 def get_ellipse(bckg_pts_all, frg_pts_all):
     bckg_pts_all_prev = bckg_pts_all.copy()
-    bckg_pts_all = remove_noise_gauss(bckg_pts_all, std_iters=1, std_range=7, axis=0)
-    bckg_pts_all = remove_noise_gauss(bckg_pts_all, std_iters=1, std_range=7, axis=1)
-    bckg_pts_all = remove_noise_gauss(bckg_pts_all, std_iters=1, std_range=7, axis=2)
+    # bckg_pts_all = remove_noise_gauss(bckg_pts_all, std_iters=1, std_range=11, axis=0)  # 11
+    # bckg_pts_all = remove_noise_gauss(bckg_pts_all, std_iters=1, std_range=11, axis=1)  # 11
+    # bckg_pts_all = remove_noise_gauss(bckg_pts_all, std_iters=1, std_range=25, axis=2)  # 25
+    bckg_pts_all, filtered_pts = remove_noise_dens(bckg_pts_all, thresh=2.5)
 
     histogram, bin_edges = np.histogram(bckg_pts_all[:, 0], bins=512, range=(-100, 100))
     plt.figure()
@@ -146,6 +177,7 @@ def get_ellipse(bckg_pts_all, frg_pts_all):
     plt.ylim([0, 100])  # <- named arguments do not work here
     plt.plot(bin_edges[0:-1], histogram)  # <- or here
     plt.show()
+
 
     # create the histogram, plot #2
 
@@ -167,8 +199,8 @@ def get_ellipse(bckg_pts_all, frg_pts_all):
     gmm.fit(points)
 
     c = gmm.means_.reshape(3)
-    r = np.sqrt(gmm.covariances_).reshape(3) * 8
-    elp_pts = get_elps_pts(points, c, r)
+    r = np.sqrt(gmm.covariances_).reshape(3) * 12
+    elp_pts = get_elps_pts(bckg_pts_all_prev, c, r)
 
     print(f"final ellipse: \t{c}\n\t{r}")
     print(
@@ -176,10 +208,59 @@ def get_ellipse(bckg_pts_all, frg_pts_all):
 
     frg_pts_elp = get_elps_pts(frg_pts_all, c, r)
     print(f"{(len(frg_pts_elp)) / len(frg_pts_all) * 100 :.2f}% of frg points are in ellipse")
+    print(f"{(len(elp_pts)) / len(bckg_pts_all_prev) * 100 :.2f}% of bkg points are in ellipse")
     # visualize
-    visualize_3d_gmm(bckg_pts_all_prev, frg_pts_all, gmm.weights_, gmm.means_.T, np.sqrt(gmm.covariances_).T * 8)
+    visualize_3d_gmm(bckg_pts_all_prev, frg_pts_all, gmm.weights_, gmm.means_.T, np.sqrt(gmm.covariances_).T * 12)
+    visualize_3d_gmm(filtered_pts, bckg_pts_all, gmm.weights_, gmm.means_.T, np.sqrt(gmm.covariances_).T * 12)
 
     return c, r
+
+def get_ellipse_debug(bckg_pts_all, frg_pts_all, c, r):
+    bckg_pts_all_prev = bckg_pts_all.copy()
+
+    points = bckg_pts_all.copy()
+    elp_pts = get_elps_pts(points, c, r)
+
+
+    frg_pts_elp = get_elps_pts(frg_pts_all, c, r)
+    print(f"{(len(frg_pts_elp)) / len(frg_pts_all) * 100 :.2f}% of frg points are in ellipse")
+    print(f"{(len(elp_pts)) / len(points) * 100 :.2f}% of bkg points are in ellipse")
+    # visualize
+    visualize_3d_gmm(bckg_pts_all_prev, frg_pts_all, [1], c.reshape(-1, 3).T, r.reshape(-1, 3).T)
+
+    return c, r
+
+
+def visualize_pts(pts1, pts2, c, r):
+    visualize_3d_gmm(pts1, pts2, [1], c.reshape(-1, 3).T, r.reshape(-1, 3).T)
+
+
+from sklearn.svm import OneClassSVM
+from sklearn.covariance import EllipticEnvelope
+from sklearn.ensemble import IsolationForest
+from sklearn.neighbors import LocalOutlierFactor
+def one_class_svm(bckg_pts_all, frg_pts_all):
+    # clf = IsolationForest(random_state=0, contamination=0.01,n_estimators=300).fit(bckg_pts_all)  # fast, works well
+    clf = LocalOutlierFactor(n_neighbors=3, algorithm="brute", metric='euclidean', novelty=True, contamination="auto").fit(bckg_pts_all)
+    cls = clf.predict(bckg_pts_all)
+    return cls
+
+
+
+
+def neigh_classifier(dens, im_pts, thresh):
+    orig_shape = im_pts.shape[:2]
+    im_pts = im_pts.reshape(-1, 3)
+    neigh = NearestNeighbors(n_neighbors=5).fit(im_pts)
+    kde = neigh.kneighbors(im_pts)
+    dens = np.mean(kde[1], axis=1)
+    dens_im = dens.reshape(orig_shape)
+    dens_im[dens_im <= thresh] = 0
+    dens_im[dens_im > thresh] = 255
+    dens_im = dens_im.astype(np.uint8)
+    return dens_im
+
+
 
 # arr_name = f"G10-Z10-D500-0"
 # bckg_pts_all = np.load(f"/home/cstar/workspace/grid-data/diff-data-arr/bckg_pts_dataset-{arr_name}.npy")[::50]

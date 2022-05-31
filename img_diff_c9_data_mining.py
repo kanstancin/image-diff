@@ -104,6 +104,51 @@ def classify_ellipse(img, c, r):
     res[val_ch > 1] = 255
     return res
 
+def get_dst_elps(im_diff, c, r, std_div=12, stds_num=2):
+    orig_shape = im_diff.shape[:2]
+    pts = im_diff.reshape(-1, 3).astype(np.float32)
+    pts_outside = ((pts[:, 0] - c[0])**2 / (r[0]**2) + (pts[:, 1] - c[1])**2 / (r[1]**2) +
+                         (pts[:, 2] - c[2])**2 / (r[2]**2)) > 1
+    pts_inside = np.logical_not(pts_outside)
+    pts_std = pts.copy()
+    means = np.mean(pts, axis=0)
+    stds = np.std(pts, axis=0)
+    means = c
+    stds = r/std_div
+    pts_std[:, 0] = (pts[:, 0] - means[0]) / stds[0]
+    pts_std[:, 1] = (pts[:, 1] - means[1]) / stds[1]
+    pts_std[:, 2] = (pts[:, 2] - means[2]) / stds[2]
+    dsts = np.sqrt(pts_std[:, 0]**2 + pts_std[:, 1]**2 + pts_std[:, 2]**2) - 1
+    dsts_img = dsts.reshape(orig_shape)
+
+    dsts_inside = dsts[pts_inside]
+    mean_dst_inside = np.mean(dsts_inside)
+    std_dst_inside = np.std(dsts_inside)
+    dst_lower_thresh = mean_dst_inside + stds_num * std_dst_inside
+    dsts_img[dsts_img < dst_lower_thresh] = 0
+    dsts_img[dsts_img >= dst_lower_thresh] = 255
+    return dsts_img
+
+def smart_dilate(im_diff, cl_res, c, r, std_div=12, stds_num=2):
+    kernel = np.ones((25, 25), np.uint8)
+    cl_res = cv.dilate(cl_res, kernel, iterations=1)
+    kernel = np.ones((15, 15), np.uint8)
+    cl_res = cv.erode(cl_res, kernel, iterations=1)
+    # get distances to ellipsoid
+    im_dsts = get_dst_elps(im_diff, c, r, std_div=std_div, stds_num=stds_num)
+    dil_res = np.logical_and(cl_res, im_dsts).astype(np.uint8) * 255
+    # debug
+    # plt.title("cl_res")
+    # plt.imshow(cl_res, cmap="gray")
+    # plt.show()
+    # plt.title("dst elps thresholded")
+    # plt.imshow(im_dsts, cmap="gray", vmin=np.amin(im_dsts), vmax=np.amax(im_dsts))
+    # plt.show()
+    # plt.title("dil_res final")
+    # plt.imshow(dil_res, cmap="gray", vmin=np.amin(dil_res), vmax=np.amax(dil_res))
+    # plt.show()
+    return dil_res
+
 
 def avg_img_from_path(inp_img_nospag_paths):
     img_noshadows_avg = np.zeros((720, 1280, 3)).astype(np.uint64)
@@ -120,7 +165,7 @@ def avg_img_from_path(inp_img_nospag_paths):
 
 def draw_rect(im, cl_res):
     ROI_number = 0
-    cnts = cv.findContours(cl_res, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+    cnts = cv.findContours(cl_res, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
     cnts = cnts[0] if len(cnts) == 2 else cnts[1]
     for c in cnts:
         if len(c) < 100:
@@ -139,16 +184,22 @@ def plt_show_img(im, title="", cmap=None, to_rgb=False):
     plt.show()
 
 
-arr_name = f"G10-Z50-D500-0"
-bckg_pts_all = np.load(f"/home/cstar/workspace/grid-data/diff-data-arr/bckg_pts_dataset-{arr_name}.npy")[::50]
-frg_pts_all = np.load(f"/home/cstar/workspace/grid-data/diff-data-arr/frg_pts_dataset-{arr_name}.npy")[::10]
+arr_name = f"G10-Z50-D500-1"
+bckg_pts_all = np.load(f"/home/cstar/workspace/grid-data/diff-data-arr/bckg_pts_dataset-{arr_name}.npy")[::25]
+frg_pts_all = np.load(f"/home/cstar/workspace/grid-data/diff-data-arr/frg_pts_dataset-{arr_name}.npy")[::5]
 # filter zeros
 frg_pts_all = frg_pts_all[np.any(frg_pts_all, axis=1)]
 
 print(f"len bckg {len(bckg_pts_all)} \nlen frg: {len(frg_pts_all)}")
 c, r = gauss_mixture.get_ellipse(bckg_pts_all, frg_pts_all)
+print(c,r,np.std(bckg_pts_all, axis=0))
+# cls_res_svm = gauss_mixture.one_class_svm(bckg_pts_all, frg_pts_all)
+# cl_1 = bckg_pts_all[cls_res_svm==-1]
+# cl_2 = bckg_pts_all[cls_res_svm==1]
+# print("cl1:", len(cl_1), len(cl_2))
+# gauss_mixture.visualize_3d_gmm(cl_2, cl_1, [1], c.reshape(-1,3).T, r.reshape(-1,3).T)
 
-data_dir = 'dataset-G10-Z50-D500-0'
+data_dir = 'dataset-G10-Z50-D500-1'
 data_spag_path = f'/home/cstar/workspace/grid-data/preproc_data/{data_dir}/dataset-im-diff-spag-avg-3/'
 
 inp_path_spag = os.path.join(data_spag_path, 'images/train/')
@@ -157,7 +208,7 @@ inp_path_mask = os.path.join(data_spag_path, 'masks/train/')
 
 inp_path_nospag = f'/home/cstar/workspace/grid-data/preproc_data/{data_dir}/no-shadow/'  # should be not avg-3
 inp_img_nospag_paths = get_img_paths(inp_path_nospag)
-display = True
+display = False
 bckg_pts_all = np.empty((0, 3))
 frg_pts_all = np.empty((0, 3))
 
@@ -166,6 +217,7 @@ img_noshadows_avg = avg_img_from_path(inp_img_nospag_paths)
 
 i1 = 0
 for i2 in range(len(inp_img_spag_paths)):
+    # if i2 != 6: continue
     # im1_path = os.path.join(inp_path_nospag, inp_img_nospag_paths[i1])
     im2_path = os.path.join(inp_path_spag, inp_img_spag_paths[i2])
     # if inp_img_nospag_paths[i1] == inp_img_spag_paths[i2]:
@@ -185,10 +237,10 @@ for i2 in range(len(inp_img_spag_paths)):
     pts_Z10 = np.array([[1093, 647], [1096, 177], [523, 90], [0, 230], [0, 240]])
     pts_Z30 = np.array([[0, 347], [569, 128], [1080, 220], [1008, 719], [683, 719], [0, 356]])
     pts_Z50 = np.array([[0, 347], [569, 128], [1080, 220], [1008, 719], [553, 719], [0, 356]])
-    pts = pts_Z10
+    pts_Z70 = np.array([[0, 443], [298, 720], [1000, 720], [1085, 205], [574, 102]])
+    pts = pts_Z50
     pts = pts.reshape((-1, 1, 2))
     maskAOI = getAOIMask(img_shape=im1.shape, poly_pts=pts)
-
     im_diff = getImDiff(im1, im2, maskAOI=maskAOI, method="saturation")
 
     # merge masks
@@ -197,21 +249,50 @@ for i2 in range(len(inp_img_spag_paths)):
     bckg_res = bckg1 + bckg2
     bckg_res = bckg_res.astype(np.uint8)
 
-    bckg_pts = im_diff[bckg_res != 1][::10]
+    # cl_res = classify_ellipse(im_diff[:, :, :], c, r)
+
+    # bckg_pts = im_diff[(bckg_res != 1) * (cl_res==255)][::10]
+    bckg_pts = im_diff[(bckg_res != 1)][::10]
     frg_pts = im_diff[im2_mask == 255]  # cut
     bckg_pts_all = np.append(bckg_pts_all, bckg_pts, axis=0)
     frg_pts_all = np.append(frg_pts_all, frg_pts, axis=0)
 
     # cl_res = classify_circle(im_diff[:, :, :], rad=10, cx=0,  cy=0, cz=0)
     cl_res = classify_ellipse(im_diff[:, :, :], c, r)
+    cl_res_dil = smart_dilate(im_diff, cl_res, c, r, std_div=9, stds_num=2)
 
-    im2 = draw_rect(im2, cl_res)
-    im2 = cv.polylines(im2, [pts], True, (255,0,0))
+    # plt.show()
+    # if i2 == 19:
+    # debug
+    # gauss_mixture.visualize_pts(bckg_pts, frg_pts, c, r)
+
+    #
+    # histogram, bin_edges = np.histogram(density)#
+    # plt.figure()
+    # plt.title("density hist")
+    # plt.xlabel("Intensity")
+    # plt.ylabel("Count")
+    # # plt.ylim([0, 100])  # <- named arguments do not work here
+    # plt.plot(bin_edges[0:-1], histogram)  # <- or here
+    # plt.show()
+
+    im2 = draw_rect(im2, cl_res_dil)
+    im2 = cv.polylines(im2, [pts], True, (255, 0, 0))
+
+    im_dsts = get_dst_elps(im_diff, c, r)
 
     res_imgs = np.append(res_imgs, cv.cvtColor(im2, cv.COLOR_BGR2RGB).reshape(1, 720, 1280, 3), axis=0)
     if display:
         plt_show_img(cl_res, title="classification mask", cmap="gray", to_rgb=False)
+        plt_show_img(cl_res_dil, title="classification mask _dil", cmap="gray", to_rgb=False)
         plt_show_img(im2, title=f"detection result, im2\n {i2}", cmap=None, to_rgb=True)
+        fig, ax = plt.subplots(2, 2)
+        im_diff[cl_res != 255] = 255
+        ax[0, 0].imshow(im_diff, vmin=-50, vmax=50)
+        ax[0, 1].imshow(im_diff[:, :, 0], cmap='gray')
+        ax[1, 0].imshow(im_diff[:, :, 1], cmap='gray')
+        ax[1, 1].imshow(im_diff[:, :, 2], cmap='gray')
+        plt.show()
 
 
 
@@ -231,12 +312,12 @@ for i2 in range(len(inp_img_spag_paths)):
 #         ax[i, j].imshow(res_imgs[i * j + j])
 # plt.show()
 
-res_imgs = res_imgs[:-1]
+res_imgs = res_imgs[:]
 from mpl_toolkits.axes_grid1 import ImageGrid
 
 for _ in range(1):
     row = 7
-    col = 3
+    col = 4
     images     = []
 
     fig = plt.figure(figsize=(row*15, col*15))
