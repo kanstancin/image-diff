@@ -129,7 +129,7 @@ def remove_noise_gauss(pts, std_iters=2, std_range=2, axis=0):
 
 from sklearn.neighbors import KernelDensity
 from sklearn.neighbors import NearestNeighbors
-def dst_classification(bckg_pts_all):
+def dst_classification(bckg_pts_all, show=False):
     # dist = DistanceMetric.get_metric('euclidean')
     # kde = KernelDensity(kernel='gaussian', bandwidth=5).fit(bckg_pts_all)
     # kde = kde.score_samples(bckg_pts_all)
@@ -139,14 +139,15 @@ def dst_classification(bckg_pts_all):
     print(kde)
     means = np.amax(kde[0], axis=1)
     print("std", np.std(means-np.mean(means)))
-    histogram, bin_edges = np.histogram(means)#
-    plt.figure()
-    plt.title("density hist")
-    plt.xlabel("Intensity")
-    plt.ylabel("Count")
-    # plt.ylim([0, 100])  # <- named arguments do not work here
-    plt.plot(bin_edges[0:-1], histogram)  # <- or here
-    plt.show()
+    if show:
+        histogram, bin_edges = np.histogram(means)#
+        plt.figure()
+        plt.title("density hist")
+        plt.xlabel("Intensity")
+        plt.ylabel("Count")
+        # plt.ylim([0, 100])  # <- named arguments do not work here
+        plt.plot(bin_edges[0:-1], histogram)  # <- or here
+        plt.show()
     return means
 
 
@@ -212,6 +213,44 @@ def get_ellipse(bckg_pts_all, frg_pts_all):
     # visualize
     visualize_3d_gmm(bckg_pts_all_prev, frg_pts_all, gmm.weights_, gmm.means_.T, np.sqrt(gmm.covariances_).T * 12)
     visualize_3d_gmm(filtered_pts, bckg_pts_all, gmm.weights_, gmm.means_.T, np.sqrt(gmm.covariances_).T * 12)
+
+    return c, r
+
+def get_ellipse_no_frg(bckg_pts_all, show=False):
+    bckg_pts_all_prev = bckg_pts_all.copy()
+    # bckg_pts_all = remove_noise_gauss(bckg_pts_all, std_iters=1, std_range=11, axis=0)  # 11
+    # bckg_pts_all = remove_noise_gauss(bckg_pts_all, std_iters=1, std_range=11, axis=1)  # 11
+    # bckg_pts_all = remove_noise_gauss(bckg_pts_all, std_iters=1, std_range=25, axis=2)  # 25
+    bckg_pts_all, filtered_pts = remove_noise_dens(bckg_pts_all, thresh=2.5)
+
+    if show:
+        histogram, bin_edges = np.histogram(bckg_pts_all[:, 0], bins=512, range=(-100, 100))
+        plt.figure()
+        plt.title("Image Difference Histogram, #1")
+        plt.xlabel("Intensity")
+        plt.ylabel("Count")
+        plt.ylim([0, 100])  # <- named arguments do not work here
+        plt.plot(bin_edges[0:-1], histogram)  # <- or here
+        plt.show()
+
+    n_gaussians = 1  # means.shape[0]
+    points = bckg_pts_all.copy()
+    # fit the gaussian model
+    gmm = BayesianGaussianMixture(n_components=n_gaussians, covariance_type='diag', weight_concentration_prior=1,
+                                  weight_concentration_prior_type='dirichlet_process')  # 'diag'
+    gmm.fit(points)
+    c = gmm.means_.reshape(3)
+    r = np.sqrt(gmm.covariances_).reshape(3) * 17
+    elp_pts = get_elps_pts(bckg_pts_all_prev, c, r)
+
+    print(f"final ellipse: \t{c}\n\t{r}")
+    print(
+        f"number of points reduced by {(len(bckg_pts_all_prev) - len(bckg_pts_all)) / len(bckg_pts_all_prev) * 100 :.2f}%")
+
+    print(f"{(len(elp_pts)) / len(bckg_pts_all_prev) * 100 :.2f}% of bkg points are in ellipse")
+    # visualize
+    if show:
+        visualize_3d_gmm(bckg_pts_all, bckg_pts_all, gmm.weights_, gmm.means_.T, np.sqrt(gmm.covariances_).T * 17)
 
     return c, r
 
